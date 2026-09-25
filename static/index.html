@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TGbot_tracker</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #17212b;
+        --panel-2: #1d2733;
+        --muted: #94a3b8;
+        --line: #2f3c4c;
+        --accent: #4ea0ff;
+        --accent-soft: rgba(78,160,255,0.15);
+        --incoming: #1f2d3d;
+        --outgoing: #234c6d;
+        --text: #e2e8f0;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; background: linear-gradient(180deg, #0b1220, #111827 32%, #0f172a);
+        color: var(--text); font-family: Arial, sans-serif;
+      }
+      .layout { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
+      .sidebar { background: rgba(15, 23, 42, 0.9); border-right: 1px solid var(--line); padding: 18px; }
+      .content { padding: 18px; }
+      .card {
+        background: rgba(23, 33, 43, 0.95); border: 1px solid var(--line); border-radius: 14px;
+        padding: 16px; margin-bottom: 16px; box-shadow: 0 8px 20px rgba(0,0,0,0.18);
+      }
+      h2, h3 { margin-top: 0; }
+      input, button, textarea {
+        width: 100%; box-sizing: border-box; margin-top: 8px; padding: 10px 12px; border-radius: 10px;
+        border: 1px solid var(--line); background: #0c1420; color: var(--text);
+      }
+      textarea { min-height: 88px; resize: vertical; }
+      button {
+        background: linear-gradient(180deg, #3b82f6, #2563eb); border: none; cursor: pointer; font-weight: 600;
+      }
+      button.secondary { background: linear-gradient(180deg, #334155, #1f2937); }
+      ul { list-style: none; padding: 0; margin: 0; }
+      .chat-item, .bot-item {
+        display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 10px; border: 1px solid transparent;
+        cursor: pointer; margin-top: 8px; transition: 0.2s border-color, background 0.2s;
+      }
+      .chat-item:hover, .bot-item:hover, .chat-item.active, .bot-item.active {
+        background: rgba(78,160,255,0.08); border-color: var(--line);
+      }
+      .avatar {
+        width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(180deg, #3b82f6, #1d4ed8);
+        display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;
+      }
+      .avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+      .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+      .stat { background: rgba(15, 23, 42, 0.75); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 0.9rem; }
+      .muted { color: var(--muted); font-size: 0.85rem; }
+      .small-tag { display: inline-block; padding: 2px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--text); font-size: 0.72rem; }
+      .diagnostic-note {
+        background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.35); border-radius: 10px;
+        padding: 10px 12px; color: #dbeafe; margin-top: 10px;
+      }
+      .message-list { display: flex; flex-direction: column; gap: 12px; min-height: 220px; }
+      .message-row { display: flex; }
+      .message-row.incoming { justify-content: flex-start; }
+      .message-row.outgoing { justify-content: flex-end; }
+      .bubble {
+        max-width: min(72%, 640px); border-radius: 18px; padding: 12px 14px; border: 1px solid var(--line);
+        line-height: 1.45; background: linear-gradient(180deg, rgba(31,45,61,0.98), rgba(21,32,44,0.9));
+        box-shadow: 0 10px 25px rgba(15,23,42,0.25); transition: transform 0.15s ease, box-shadow 0.15s ease;
+        cursor: pointer;
+      }
+      .bubble:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(15,23,42,0.3); }
+      .message-row.outgoing .bubble { background: linear-gradient(180deg, rgba(35,76,109,0.95), rgba(25,54,80,0.9)); }
+      .bubble-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 0.82rem; color: var(--muted); }
+      .bubble-body { white-space: pre-wrap; word-break: break-word; font-size: 1rem; }
+      .empty-state {
+        border: 1px dashed var(--line); border-radius: 12px; background: rgba(148,163,184,0.03); color: var(--muted);
+        padding: 18px; text-align: center;
+      }
+      .bubble-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+      .mini-button {
+        background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.4); color: #dbeafe;
+        padding: 6px 10px; border-radius: 999px; font-size: 0.74rem; cursor: pointer; width: auto; margin-top: 0;
+      }
+      .raw-box { display: none; }
+      pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; }
+      .context-menu {
+        position: fixed; z-index: 50; min-width: 180px; background: rgba(15, 23, 42, 0.97); border: 1px solid var(--line);
+        border-radius: 12px; box-shadow: 0 16px 30px rgba(0,0,0,0.3); display: none; padding: 8px;
+      }
+      .context-menu.visible { display: block; }
+      .context-menu button {
+        display: block; width: 100%; background: transparent; border: none; text-align: left; padding: 9px 10px; border-radius: 8px;
+        color: var(--text); margin: 0; font-size: 0.9rem;
+      }
+      .context-menu button:hover { background: rgba(78,160,255,0.1); }
+      .payload-modal {
+        position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(2,6,23,0.72); z-index: 80;
+      }
+      .payload-modal.visible { display: flex; }
+      .payload-dialog {
+        width: min(860px, 88vw); max-height: 80vh; background: #0f172a; border: 1px solid var(--line); border-radius: 18px;
+        box-shadow: 0 18px 44px rgba(2,6,23,0.45); padding: 16px; overflow: hidden;
+      }
+      .payload-dialog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+      .payload-dialog pre {
+        max-height: 60vh; overflow: auto; background: rgba(15,23,42,0.8); border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+      }
+      @media (max-width: 900px) { .layout { display: block; } .sidebar { border-right: none; border-bottom: 1px solid var(--line); } }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <h2>TGbot_tracker</h2>
+        <div class="card">
+          <h3>Add bot</h3>
+          <form id="bot-form">
+            <label>
+              Name
+              <input id="bot-name" type="text" placeholder="My Bot" required />
+            </label>
+            <label>
+              Token
+              <input id="bot-token" type="password" placeholder="123:ABC" required />
+            </label>
+            <button type="submit">Save token</button>
+          </form>
+        </div>
+        <div class="card">
+          <h3>Bots</h3>
+          <ul id="bot-list"></ul>
+        </div>
+      </aside>
+      <main class="content">
+        <div id="stats" class="stats"></div>
+        <div class="card">
+          <h3>Chats</h3>
+          <ul id="chat-list"></ul>
+        </div>
+        <div id="diagnostics" class="diagnostic-note hidden" style="display:none"></div>
+        <div class="card">
+          <h3>Send message</h3>
+          <textarea id="outgoing-text" placeholder="Write a message to the selected chat..."></textarea>
+          <button id="send-message" class="secondary">Send via Telegram</button>
+        </div>
+        <div class="card">
+          <h3>Messages</h3>
+          <div id="message-list" class="message-list"></div>
+        </div>
+      </main>
+    </div>
+
+    <div id="context-menu" class="context-menu" aria-label="Message options">
+      <button id="show-json-menu">Show JSON payload</button>
+    </div>
+
+    <div id="payload-modal" class="payload-modal" aria-modal="true" role="dialog">
+      <div class="payload-dialog">
+        <div class="payload-dialog-header">
+          <h3>Message payload</h3>
+          <button id="close-payload-modal" class="mini-button">Close</button>
+        </div>
+        <pre id="payload-content"></pre>
+      </div>
+    </div>
+
+    <script>
+      const state = { bots: [], selectedBotId: null, selectedChatId: null, chats: [], messages: [] };
+      const botListEl = document.getElementById('bot-list');
+      const chatListEl = document.getElementById('chat-list');
+      const messageListEl = document.getElementById('message-list');
+      const statsEl = document.getElementById('stats');
+      const diagnosticsEl = document.getElementById('diagnostics');
+      const outgoingTextEl = document.getElementById('outgoing-text');
+      const contextMenuEl = document.getElementById('context-menu');
+      const payloadModalEl = document.getElementById('payload-modal');
+      const payloadContentEl = document.getElementById('payload-content');
+      let selectedPayload = '';
+
+      function scrollMessagesToBottom(force = false) {
+        if (!messageListEl) return;
+        const isNearBottom = messageListEl.scrollHeight - messageListEl.scrollTop - messageListEl.clientHeight < 120;
+        if (force || isNearBottom) {
+          requestAnimationFrame(() => {
+            messageListEl.scrollTop = messageListEl.scrollHeight;
+          });
+        }
+      }
+
+      function safeJsonParse(rawValue) {
+        try {
+          return JSON.parse(rawValue || '{}');
+        } catch {
+          return {};
+        }
+      }
+
+      async function apiRequest(url, options = {}) {
+        const response = await fetch(url, {
+          headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+          ...options,
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.detail || response.statusText);
+        }
+        return response.json();
+      }
+
+      function formatTime(value) {
+        if (!value) return '—';
+        try {
+          const dt = new Date(value);
+          return isNaN(dt.getTime()) ? value : dt.toLocaleString([], { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' });
+        } catch {
+          return value;
+        }
+      }
+
+      function createAvatar(name, imageSrc) {
+        if (imageSrc) return `<div class="avatar"><img src="/api/media/${imageSrc}" alt="avatar" /></div>`;
+        const text = (name || '?').trim().slice(0, 2).toUpperCase();
+        return `<div class="avatar">${text}</div>`;
+      }
+
+      function showPayloadModal(rawJson) {
+        selectedPayload = JSON.stringify(safeJsonParse(rawJson), null, 2);
+        payloadContentEl.textContent = selectedPayload;
+        payloadModalEl.classList.add('visible');
+      }
+
+      function hidePayloadModal() {
+        payloadModalEl.classList.remove('visible');
+      }
+
+      function openMessageContextMenu(event, rawJson) {
+        event.preventDefault();
+        selectedPayload = JSON.stringify(safeJsonParse(rawJson), null, 2);
+        contextMenuEl.classList.add('visible');
+        contextMenuEl.style.left = `${event.clientX}px`;
+        contextMenuEl.style.top = `${event.clientY}px`;
+        contextMenuEl.dataset.payload = selectedPayload;
+      }
+
+      document.addEventListener('click', (event) => {
+        if (!contextMenuEl.contains(event.target)) {
+          contextMenuEl.classList.remove('visible');
+        }
+        if (event.target === payloadModalEl || event.target.closest('#close-payload-modal')) {
+          hidePayloadModal();
+        }
+      });
+
+      document.getElementById('show-json-menu').addEventListener('click', () => {
+        payloadContentEl.textContent = contextMenuEl.dataset.payload || selectedPayload || '{}';
+        payloadModalEl.classList.add('visible');
+        contextMenuEl.classList.remove('visible');
+      });
+
+      async function loadBots() {
+        state.bots = await apiRequest('/api/bots');
+        if (!state.selectedBotId && state.bots.length) state.selectedBotId = state.bots[0].id;
+        renderBots();
+        if (state.selectedBotId) {
+          await loadChats();
+          await loadStats();
+        }
+      }
+
+      async function loadChats() {
+        if (!state.selectedBotId) return;
+        state.chats = await apiRequest(`/api/bots/${state.selectedBotId}/chats`);
+        if (!state.selectedChatId && state.chats.length) {
+          state.selectedChatId = String(state.chats[0].chat_id);
+        }
+        if (!state.chats.some(chat => String(chat.chat_id) === String(state.selectedChatId))) {
+          state.selectedChatId = state.chats.length ? String(state.chats[0].chat_id) : null;
+        }
+        renderChats();
+        if (state.selectedChatId) {
+          await loadMessages(state.selectedChatId);
+        } else {
+          state.messages = [];
+          renderMessages();
+        }
+        await loadDiagnostics();
+      }
+
+      async function loadMessages(chatId) {
+        if (!state.selectedBotId || !chatId) return;
+        state.messages = await apiRequest(`/api/bots/${state.selectedBotId}/messages?chat_id=${encodeURIComponent(chatId)}`);
+        renderMessages();
+      }
+
+      async function loadDiagnostics() {
+        if (!state.selectedBotId) return;
+        const diagnostics = await apiRequest(`/api/bots/${state.selectedBotId}/diagnostics`);
+        if (diagnostics.total_chats === 0) {
+          diagnosticsEl.style.display = 'block';
+          diagnosticsEl.textContent = 'No chats yet. Telegram only sends a chat after the bot receives activity or when you send a message from this app.';
+          return;
+        }
+        const emptyCount = diagnostics.empty_chats.length;
+        if (emptyCount > 0) {
+          diagnosticsEl.style.display = 'block';
+          diagnosticsEl.textContent = `Empty chats: ${emptyCount}. Telegram does not provide history recorded before the bot started polling. Only messages sent while polling is active or sent through this app are archived.`;
+        } else {
+          diagnosticsEl.style.display = 'none';
+          diagnosticsEl.textContent = '';
+        }
+      }
+
+      async function loadStats() {
+        if (!state.selectedBotId) return;
+        const stats = await apiRequest(`/api/bots/${state.selectedBotId}/stats`);
+        statsEl.innerHTML = `
+          <div class="stat">Total: ${stats.total_messages}</div>
+          <div class="stat">Edited: ${stats.edited_messages}</div>
+          <div class="stat">Deleted: ${stats.deleted_messages}</div>
+          <div class="stat">Chats: ${stats.chats}</div>
+        `;
+      }
+
+      function renderBots() {
+        botListEl.innerHTML = state.bots.map(bot => `
+          <li class="bot-item ${state.selectedBotId === bot.id ? 'active' : ''}" data-id="${bot.id}">
+            <div class="avatar">${(bot.name || 'B').slice(0, 2).toUpperCase()}</div>
+            <div>
+              <div><strong>${bot.name}</strong></div>
+              <div class="muted">${bot.username || 'bot'}</div>
+            </div>
+          </li>
+        `).join('');
+        botListEl.querySelectorAll('.bot-item').forEach(item => {
+          item.addEventListener('click', async () => {
+            state.selectedBotId = Number(item.dataset.id);
+            state.selectedChatId = null;
+            renderBots();
+            await loadChats();
+            await loadStats();
+          });
+        });
+      }
+
+      function renderChats() {
+        chatListEl.innerHTML = state.chats.map(chat => `
+          <li class="chat-item ${String(chat.chat_id) === String(state.selectedChatId) ? 'active' : ''}" data-chat-id="${chat.chat_id}">
+            <div class="avatar">${(chat.title || String(chat.chat_id)).slice(0, 2).toUpperCase()}</div>
+            <div>
+              <div><strong>${chat.title || chat.chat_id}</strong></div>
+              <div class="muted">${chat.chat_type || 'unknown'} • ${formatTime(chat.last_seen_at || chat.created_at)}</div>
+            </div>
+          </li>
+        `).join('');
+        chatListEl.querySelectorAll('.chat-item').forEach(item => {
+          item.addEventListener('click', async () => {
+            state.selectedChatId = String(item.dataset.chatId);
+            await loadMessages(state.selectedChatId);
+            renderChats();
+          });
+        });
+      }
+
+      function renderMessages() {
+        if (!state.selectedChatId) {
+          messageListEl.innerHTML = '<div class="empty-state">Select a chat to see archived messages.</div>';
+          return;
+        }
+        if (!state.messages.length) {
+          messageListEl.innerHTML = `
+            <div class="empty-state">
+              No archived messages in this chat yet.<br />
+              Telegram does not provide history from before the bot started polling, and bot outgoing messages are only archived when sent through this app.
+            </div>
+          `;
+          scrollMessagesToBottom(true);
+          return;
+        }
+
+        messageListEl.innerHTML = state.messages.slice().reverse().map(message => {
+          const direction = message.direction === 'outgoing' ? 'outgoing' : 'incoming';
+          const raw = JSON.stringify(safeJsonParse(message.raw_json), null, 2);
+          const labels = [];
+          if (message.is_edited) labels.push('<span class="small-tag">edited</span>');
+          if (message.is_deleted) labels.push('<span class="small-tag">deleted</span>');
+          const senderName = message.direction === 'outgoing' ? (message.sender_name || 'You') : (message.sender_name || 'User');
+          const avatarHtml = createAvatar(senderName, message.avatar_path ? message.avatar_path.replace('\\', '/') : '');
+
+          return `
+            <div class="message-row ${direction}">
+              <div class="bubble" data-payload='${raw.replace(/'/g, '&apos;')}'>
+                <div class="bubble-header">
+                  <div style="display:flex; align-items:center; gap:8px;">${avatarHtml}<strong>${senderName}</strong></div>
+                  <div>${labels.join(' ')}</div>
+                </div>
+                <div class="bubble-body">${(message.message_text || '(media)').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                <div class="bubble-actions">
+                  <button class="mini-button" type="button" data-show-payload='${raw.replace(/'/g, '&apos;')}'>Details</button>
+                </div>
+                <div class="muted" style="margin-top:8px;">${formatTime(message.created_at)}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        messageListEl.querySelectorAll('.bubble').forEach((bubble) => {
+          bubble.addEventListener('contextmenu', (event) => {
+            openMessageContextMenu(event, bubble.dataset.payload || '{}');
+          });
+          bubble.querySelector('[data-show-payload]')?.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const payload = bubble.dataset.payload || '{}';
+            showPayloadModal(payload);
+          });
+        });
+
+        scrollMessagesToBottom(true);
+      }
+
+      document.getElementById('bot-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = document.getElementById('bot-name').value.trim();
+        const token = document.getElementById('bot-token').value.trim();
+        try {
+          await apiRequest('/api/bots', {
+            method: 'POST',
+            body: JSON.stringify({ name, token }),
+          });
+          document.getElementById('bot-form').reset();
+          await loadBots();
+        } catch (error) {
+          alert(error.message);
+        }
+      });
+
+      document.getElementById('send-message').addEventListener('click', async () => {
+        if (!state.selectedBotId || !state.selectedChatId) {
+          alert('Choose a bot and a chat first.');
+          return;
+        }
+        const text = outgoingTextEl.value.trim();
+        if (!text) {
+          alert('Message text cannot be empty.');
+          return;
+        }
+        try {
+          const result = await apiRequest(`/api/bots/${state.selectedBotId}/chats/${encodeURIComponent(state.selectedChatId)}/messages`, {
+            method: 'POST',
+            body: JSON.stringify({ text }),
+          });
+          outgoingTextEl.value = '';
+          state.messages = [result, ...state.messages];
+          renderMessages();
+          await loadChats();
+          await loadStats();
+        } catch (error) {
+          alert(error.message);
+        }
+      });
+
+      async function autoRefresh() {
+        if (!state.selectedBotId) return;
+        try {
+          await loadChats();
+          await loadStats();
+          if (state.selectedChatId) {
+            await loadMessages(state.selectedChatId);
+          }
+        } catch (error) {
+          console.warn('Auto refresh failed:', error);
+        }
+      }
+
+      loadBots();
+      setInterval(autoRefresh, 5000);
+    </script>
+  </body>
+</html>

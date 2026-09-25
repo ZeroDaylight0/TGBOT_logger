@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+
+# Local runtime data and secrets
+tracker.db
+tracker.db-wal
+tracker.db-shm
+tracker.key
+*.key
+*.pem
+*.crt
+*.env
+.env
+.env.*
+data/
+logs/
+*.log
+
+# Editors / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Packaging
+build/
+dist/
+*.egg-info/
