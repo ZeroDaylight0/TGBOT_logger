@@ -71,7 +71,7 @@ TGBOT_logger/
 
 ```bash
 python -m pip install -r requirements.txt
-pytest -q
+python -m pytest -q
 ```
 
 ## Limitations
