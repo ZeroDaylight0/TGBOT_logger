@@ -1,45 +1,90 @@
+<div align="center">
+
 # TGbot_tracker
 
-TGbot_tracker is a local-only Telegram activity tracker that stores multiple bot tokens in a local SQLite database, encrypts each token with a Fernet key stored next to the app, and archives Telegram message payloads plus any downloaded media.
+### A local archive for everything your Telegram bots receive
+
+Messages, photos, videos and voice messages sent to your bots are saved to a
+local SQLite database and browsed in a Telegram-style web UI.
+
+[![CI](https://github.com/ZeroDaylight0/TGBOT_logger/actions/workflows/ci.yml/badge.svg)](https://github.com/ZeroDaylight0/TGBOT_logger/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-aiogram_3-009688?logo=fastapi&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+</div>
+
+---
 
 ## Features
 
-- FastAPI web UI and REST API on 127.0.0.1 only.
-- Support for multiple bot tokens added through the web UI.
-- SQLite-backed storage of bot metadata, chats, and message records.
-- Encrypted token persistence using a local key file (`tracker.key`).
-- Durable archive of raw Telegram payloads and downloaded media under `data/`.
-- Immutable message records with edited/deleted flags where Telegram exposes them.
-- Chat and message browsing via the bundled static frontend.
-- Incoming/outgoing direction, sender/recipient metadata, avatar caching, and Telegram-like conversation UI.
-- Outgoing message send flow: save pending record, call Telegram `sendMessage`, then bind the Telegram `message_id`.
-- Windows launch helper for local development and simple startup.
+- **Multiple bots.** Add any number of bot tokens from the web UI; each bot is polled in its own background task.
+- **Encrypted tokens.** Tokens are encrypted with a Fernet key stored next to the app (`tracker.key`).
+- **Full archive.** Raw Telegram update JSON goes to SQLite, and media files are downloaded into a per-bot folder under `data/`.
+- **Immutable history.** Message records are never overwritten; edits and deletions are flagged where Telegram exposes them.
+- **Conversation view.** Incoming and outgoing direction, sender and recipient metadata, cached avatars and a Telegram-like chat layout.
+- **Reply from the UI.** Outgoing messages are saved as pending, sent with `sendMessage`, then linked to the Telegram `message_id`.
+- **Local only.** The FastAPI server binds to `127.0.0.1`.
 
 ## Quick start
 
-1. Install dependencies:
+Requires Python 3.10 or newer.
 
-   python -m pip install -r requirements.txt
+```bash
+git clone https://github.com/ZeroDaylight0/TGBOT_logger.git
+cd TGBOT_logger
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m pip install -r requirements.txt
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-2. Start the app:
+Open <http://127.0.0.1:8000/>, then add a bot name and the token you got from [@BotFather](https://t.me/BotFather).
 
-   python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+On Windows you can also run [`start_tracker.bat`](start_tracker.bat).
 
-3. Open the browser at http://127.0.0.1:8000/
+## Configuration
 
-4. Add bot tokens from the dashboard.
+| Variable | Default | Purpose |
+|---|---|---|
+| `TG_TRACKER_HOST` | `127.0.0.1` | Listen address. |
+| `TG_TRACKER_PORT` | `8000` | HTTP port. |
+| `TG_TRACKER_DB_PATH` | `./tracker.db` | SQLite database file. |
+| `TG_TRACKER_KEY_PATH` | `./tracker.key` | Fernet key used to encrypt bot tokens. |
 
-## Windows startup
+## Project structure
 
-Run the included helper:
+```text
+TGBOT_logger/
+├── app/
+│   ├── main.py              # FastAPI app and REST API
+│   ├── telegram_service.py  # aiogram polling workers and media download
+│   ├── database.py          # SQLite schema and queries
+│   ├── security.py          # Token encryption
+│   └── config.py            # Paths, host and port
+├── static/index.html        # Web UI
+├── tests/                   # pytest suite
+└── start_tracker.bat        # Windows launcher
+```
 
-start_tracker.bat
+## Tests
 
-This launches the app with the local-only host and port configuration from the app config.
+```bash
+python -m pip install -r requirements.txt
+pytest -q
+```
 
-## Notes
+## Limitations
 
-- The app intentionally binds to `127.0.0.1` and should not be exposed externally.
-- The Telegram library used by the polling worker keeps each configured bot alive in a background task.
-- Telegram does not expose message history created before the bot started polling. The app therefore archives only updates seen while polling is active, plus outgoing messages created through the app UI.
-- The raw Telegram update JSON is retained in SQLite, while media files are saved under the bot-specific data directory.
+- Telegram does not give bots message history from before they started polling, so only updates seen while the tracker runs are archived, plus messages sent from the UI.
+- A bot token can be used by one polling client at a time. Stop other scripts that poll the same bot.
+
+## Privacy and security
+
+- Keep `tracker.key`, `tracker.db` and `data/` private: together they contain the decrypted tokens and every archived message. All three are in `.gitignore`.
+- Do not expose the server to the internet: the web UI has no authentication.
+- Archive only bots you own, and let the people writing to them know their messages are stored.
+
+## License
+
+[MIT](LICENSE) © 2026 ZeroDaylight0
