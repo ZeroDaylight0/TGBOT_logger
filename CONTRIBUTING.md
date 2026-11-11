@@ -7,7 +7,7 @@ Thanks for helping improve TGbot_tracker!
 ```bash
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
