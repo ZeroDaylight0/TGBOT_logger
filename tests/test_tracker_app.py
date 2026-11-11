@@ -57,7 +57,7 @@ def test_message_recording_and_flags(isolated_db):
 
 
 def test_web_api_creates_bot_and_reads_stats(isolated_db):
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1:8000")
     response = client.post('/api/bots', json={"name": "demo", "token": "123456:ABCDEF"})
     assert response.status_code == 200
     payload = response.json()
@@ -69,7 +69,7 @@ def test_web_api_creates_bot_and_reads_stats(isolated_db):
 
 
 def test_send_message_route_records_outgoing_message_and_binds_telegram_id(isolated_db, monkeypatch):
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1:8000")
     bot = client.post('/api/bots', json={"name": "demo", "token": "123456:ABCDEF"}).json()
 
     async def fake_send(bot_id, chat_id, text):
@@ -141,3 +141,47 @@ def test_media_save_handles_telegram_photo_list(isolated_db, monkeypatch):
     result = asyncio.run(BotManager()._save_media_if_needed(1, payload, SimpleNamespace(message_id=7)))
     assert result is not None
     assert result.endswith('file.jpg')
+
+
+def test_rejects_foreign_host_header(isolated_db):
+    # DNS rebinding: evil.example resolves to 127.0.0.1 but the browser still sends its name.
+    client = TestClient(app, base_url="http://evil.example:8000")
+    assert client.get("/api/bots").status_code == 403
+
+
+def test_accepts_local_host_names(isolated_db):
+    for base_url in ("http://localhost:8000", "http://127.0.0.1:8000", "http://[::1]:8000"):
+        assert TestClient(app, base_url=base_url).get("/api/health").status_code == 200
+
+
+def test_rejects_cross_site_post(isolated_db):
+    client = TestClient(app, base_url="http://127.0.0.1:8000")
+    response = client.post(
+        "/api/bots",
+        json={"name": "demo", "token": "123456:ABCDEF"},
+        headers={"Origin": "https://evil.example"},
+    )
+    assert response.status_code == 403
+    same_origin = client.post(
+        "/api/bots",
+        json={"name": "demo", "token": "123456:ABCDEF"},
+        headers={"Origin": "http://127.0.0.1:8000"},
+    )
+    assert same_origin.status_code == 200
+
+
+def test_media_route_stays_inside_bot_folder(isolated_db, tmp_path, monkeypatch):
+    data_dir = tmp_path / "data"
+    (data_dir / "1").mkdir(parents=True)
+    (data_dir / "1" / "photo.jpg").write_bytes(b"ok")
+    (data_dir / "2").mkdir()
+    (data_dir / "2" / "secret.jpg").write_bytes(b"other bot")
+    (tmp_path / "data_backup").mkdir()
+    (tmp_path / "data_backup" / "x.jpg").write_bytes(b"outside")
+    monkeypatch.setattr("app.main.DATA_DIR", data_dir)
+
+    client = TestClient(app, base_url="http://127.0.0.1:8000")
+    assert client.get("/api/media/1/photo.jpg").content == b"ok"
+    assert client.get("/api/media/1/..%2F2%2Fsecret.jpg").status_code == 404
+    assert client.get("/api/media/1/..%2F..%2Fdata_backup%2Fx.jpg").status_code == 404
+    assert client.get("/api/media/1/").status_code == 404

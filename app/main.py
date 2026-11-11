@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 import httpx
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .config import DATA_DIR, HOST, PORT, STATIC_DIR
+from .config import ALLOWED_HOSTS, DATA_DIR, HOST, PORT, STATIC_DIR
 from .database import (
     bind_sent_message,
     get_bot_stats,
@@ -62,6 +62,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="TGbot_tracker", lifespan=lifespan)
+
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _hostname(value: str) -> str:
+    """Host header or Origin netloc without the port: "[::1]:8000" -> "::1"."""
+    value = value.strip().lower()
+    if value.startswith("["):
+        return value[1:value.find("]")] if "]" in value else value
+    return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
+
+
+@app.middleware("http")
+async def local_only_guard(request: Request, call_next):
+    # Blocks DNS rebinding: a website that points its own name at 127.0.0.1 still sends
+    # its own name in Host, so only the local names are accepted.
+    if _hostname(request.headers.get("host", "")) not in ALLOWED_HOSTS:
+        return PlainTextResponse("Host not allowed", status_code=403)
+    # Blocks cross-site requests that change data (adding bots, sending messages).
+    if request.method in UNSAFE_METHODS:
+        origin = request.headers.get("origin")
+        if origin is not None:
+            netloc = origin.split("://", 1)[-1]
+            if _hostname(netloc) not in ALLOWED_HOSTS:
+                return PlainTextResponse("Cross-site request rejected", status_code=403)
+        if request.headers.get("sec-fetch-site") == "cross-site":
+            return PlainTextResponse("Cross-site request rejected", status_code=403)
+    return await call_next(request)
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
@@ -155,8 +184,9 @@ def bot_stats(bot_id: int) -> dict[str, Any]:
 
 @app.get("/api/media/{bot_id}/{file_path:path}")
 def media_file(bot_id: int, file_path: str) -> FileResponse:
-    target = (DATA_DIR / str(bot_id) / file_path).resolve()
-    if not target.exists() or not str(target).startswith(str(DATA_DIR.resolve())):
+    bot_dir = (DATA_DIR / str(bot_id)).resolve()
+    target = (bot_dir / file_path).resolve()
+    if not target.is_relative_to(bot_dir) or not target.is_file():
         raise HTTPException(status_code=404, detail="Media not found")
     return FileResponse(target)
 
