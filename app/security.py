@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -12,6 +13,10 @@ def ensure_key(path: Path | None = None) -> bytes:
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.exists():
         target.write_bytes(Fernet.generate_key())
+    try:
+        os.chmod(target, 0o600)  # no-op on Windows
+    except OSError:
+        pass
     return target.read_bytes()
 
 

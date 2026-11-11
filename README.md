@@ -41,7 +41,8 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 Open <http://127.0.0.1:8000/>, then add a bot name and the token you got from [@BotFather](https://t.me/BotFather).
 
-On Windows you can also run [`start_tracker.bat`](start_tracker.bat).
+On Windows you can also run [`start_tracker.bat`](start_tracker.bat), and on Linux or macOS
+[`./start_tracker.sh`](start_tracker.sh) (it creates `.venv` on first run).
 
 ## Configuration
 
@@ -51,6 +52,7 @@ On Windows you can also run [`start_tracker.bat`](start_tracker.bat).
 | `TG_TRACKER_PORT` | `8000` | HTTP port. |
 | `TG_TRACKER_DB_PATH` | `./tracker.db` | SQLite database file. |
 | `TG_TRACKER_KEY_PATH` | `./tracker.key` | Fernet key used to encrypt bot tokens. |
+| `TG_TRACKER_ALLOWED_HOSTS` | *(empty)* | Extra comma-separated host names the UI may be opened by (only `localhost`, `127.0.0.1` and `::1` are accepted by default). |
 
 ## Project structure
 
@@ -64,13 +66,14 @@ TGBOT_logger/
 │   └── config.py            # Paths, host and port
 ├── static/index.html        # Web UI
 ├── tests/                   # pytest suite
-└── start_tracker.bat        # Windows launcher
+├── start_tracker.bat        # Windows launcher
+└── start_tracker.sh         # Linux / macOS launcher
 ```
 
 ## Tests
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
@@ -83,6 +86,10 @@ python -m pytest -q
 
 - Keep `tracker.key`, `tracker.db` and `data/` private: together they contain the decrypted tokens and every archived message. All three are in `.gitignore`.
 - Do not expose the server to the internet: the web UI has no authentication.
+- The server only answers requests addressed to a local host name and rejects cross-site
+  writes, so a web page you visit cannot read the archive or send messages through it.
+- Names, chat titles and message text from Telegram are escaped before they are shown.
+- On Linux and macOS `tracker.key` is created readable by your user only.
 - Archive only bots you own, and let the people writing to them know their messages are stored.
 
 ## License
