@@ -189,6 +189,14 @@
         }
       }
 
+      // Every value from Telegram (names, titles, usernames) is attacker-controlled:
+      // escape it before it goes into innerHTML or an attribute.
+      function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        })[ch]);
+      }
+
       function safeJsonParse(rawValue) {
         try {
           return JSON.parse(rawValue || '{}');
@@ -220,9 +228,12 @@
       }
 
       function createAvatar(name, imageSrc) {
-        if (imageSrc) return `<div class="avatar"><img src="/api/media/${imageSrc}" alt="avatar" /></div>`;
+        if (imageSrc) {
+          const path = imageSrc.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+          return `<div class="avatar"><img src="/api/media/${esc(path)}" alt="avatar" /></div>`;
+        }
         const text = (name || '?').trim().slice(0, 2).toUpperCase();
-        return `<div class="avatar">${text}</div>`;
+        return `<div class="avatar">${esc(text)}</div>`;
       }
 
       function showPayloadModal(rawJson) {
@@ -316,20 +327,20 @@
         if (!state.selectedBotId) return;
         const stats = await apiRequest(`/api/bots/${state.selectedBotId}/stats`);
         statsEl.innerHTML = `
-          <div class="stat">Total: ${stats.total_messages}</div>
-          <div class="stat">Edited: ${stats.edited_messages}</div>
-          <div class="stat">Deleted: ${stats.deleted_messages}</div>
-          <div class="stat">Chats: ${stats.chats}</div>
+          <div class="stat">Total: ${esc(stats.total_messages)}</div>
+          <div class="stat">Edited: ${esc(stats.edited_messages)}</div>
+          <div class="stat">Deleted: ${esc(stats.deleted_messages)}</div>
+          <div class="stat">Chats: ${esc(stats.chats)}</div>
         `;
       }
 
       function renderBots() {
         botListEl.innerHTML = state.bots.map(bot => `
-          <li class="bot-item ${state.selectedBotId === bot.id ? 'active' : ''}" data-id="${bot.id}">
-            <div class="avatar">${(bot.name || 'B').slice(0, 2).toUpperCase()}</div>
+          <li class="bot-item ${state.selectedBotId === bot.id ? 'active' : ''}" data-id="${esc(bot.id)}">
+            <div class="avatar">${esc((bot.name || 'B').slice(0, 2).toUpperCase())}</div>
             <div>
-              <div><strong>${bot.name}</strong></div>
-              <div class="muted">${bot.username || 'bot'}</div>
+              <div><strong>${esc(bot.name)}</strong></div>
+              <div class="muted">${esc(bot.username || 'bot')}</div>
             </div>
           </li>
         `).join('');
@@ -346,11 +357,11 @@
 
       function renderChats() {
         chatListEl.innerHTML = state.chats.map(chat => `
-          <li class="chat-item ${String(chat.chat_id) === String(state.selectedChatId) ? 'active' : ''}" data-chat-id="${chat.chat_id}">
-            <div class="avatar">${(chat.title || String(chat.chat_id)).slice(0, 2).toUpperCase()}</div>
+          <li class="chat-item ${String(chat.chat_id) === String(state.selectedChatId) ? 'active' : ''}" data-chat-id="${esc(chat.chat_id)}">
+            <div class="avatar">${esc((chat.title || String(chat.chat_id)).slice(0, 2).toUpperCase())}</div>
             <div>
-              <div><strong>${chat.title || chat.chat_id}</strong></div>
-              <div class="muted">${chat.chat_type || 'unknown'} • ${formatTime(chat.last_seen_at || chat.created_at)}</div>
+              <div><strong>${esc(chat.title || chat.chat_id)}</strong></div>
+              <div class="muted">${esc(chat.chat_type || 'unknown')} • ${esc(formatTime(chat.last_seen_at || chat.created_at))}</div>
             </div>
           </li>
         `).join('');
@@ -386,20 +397,20 @@
           if (message.is_edited) labels.push('<span class="small-tag">edited</span>');
           if (message.is_deleted) labels.push('<span class="small-tag">deleted</span>');
           const senderName = message.direction === 'outgoing' ? (message.sender_name || 'You') : (message.sender_name || 'User');
-          const avatarHtml = createAvatar(senderName, message.avatar_path ? message.avatar_path.replace('\\', '/') : '');
+          const avatarHtml = createAvatar(senderName, message.avatar_path || '');
 
           return `
             <div class="message-row ${direction}">
-              <div class="bubble" data-payload='${raw.replace(/'/g, '&apos;')}'>
+              <div class="bubble" data-payload="${esc(raw)}">
                 <div class="bubble-header">
-                  <div style="display:flex; align-items:center; gap:8px;">${avatarHtml}<strong>${senderName}</strong></div>
+                  <div style="display:flex; align-items:center; gap:8px;">${avatarHtml}<strong>${esc(senderName)}</strong></div>
                   <div>${labels.join(' ')}</div>
                 </div>
-                <div class="bubble-body">${(message.message_text || '(media)').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                <div class="bubble-body">${esc(message.message_text || '(media)')}</div>
                 <div class="bubble-actions">
-                  <button class="mini-button" type="button" data-show-payload='${raw.replace(/'/g, '&apos;')}'>Details</button>
+                  <button class="mini-button" type="button" data-show-payload="${esc(raw)}">Details</button>
                 </div>
-                <div class="muted" style="margin-top:8px;">${formatTime(message.created_at)}</div>
+                <div class="muted" style="margin-top:8px;">${esc(formatTime(message.created_at))}</div>
               </div>
             </div>
           `;
